@@ -1,15 +1,18 @@
+import asyncio
 from os import getenv
 from typing import Any, AsyncGenerator
-from openai import AsyncOpenAI
+from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 from client.response import EventType, StreamEvent, TextDelta
 from client.response import TokenUsage
 from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class LLMClient:
     def __init__(self) -> None:
         self._client: AsyncOpenAI | None = None
+        self._max_retries: int = 3
 
     def get_client(self) -> AsyncOpenAI:
         if self._client is None:
@@ -29,30 +32,95 @@ class LLMClient:
             self._client = None
 
     async def chat_completion(
-        self, messages: list[dict[str, Any]], stream: bool = False, 
+        self,
+        messages: list[dict[str, Any]],
+        stream: bool = False,
     ) -> AsyncGenerator[StreamEvent, None]:
+        
+        # created client and kwargs 
         client = self.get_client()
-
         kwargs: dict[str, Any] = {
             "model": "inclusionai/ling-3.0-flash:free",
             "messages": messages,
             "stream": stream,
         }
 
-        if stream:
-            await self._stream_response(client, kwargs)
-        else:
-            event = await self._non_stream_response(client, kwargs)
-            yield event
-        return 
+        for attempt in range(self._max_retries + 1):
+            try:
+
+                if stream:
+                    async for event in self._stream_response(client, kwargs):
+                        yield event
+                else:
+                    event = await self._non_stream_response(client, kwargs)
+                    yield event
+                return
+            except RateLimitError as e:
+                if attempt < self._max_retries:
+                    wait_time = 2**attempt
+                    await asyncio.sleep(wait_time)
+                else:
+                    yield StreamEvent(
+                        type=EventType.ERROR,
+                        error=f"Rate limit exceeded: {e}",
+                    )
+                    return
+
+            except APIConnectionError as e:
+                if attempt < self._max_retries:
+                    wait_time = 2**attempt
+                    await asyncio.sleep(wait_time)
+                else:
+                    yield StreamEvent(
+                        type=EventType.ERROR,
+                        error=f"API connection error: {e}",
+                    )
+                    return
+
+            except APIError as e:
+                yield StreamEvent(
+                    type=EventType.ERROR,
+                    error=f"API error: {e.code} - {e.message}",
+                )
+                return
 
     async def _stream_response(
         self,
         client: AsyncOpenAI,
         kwargs: dict[str, Any],
-    ):
+    ) -> AsyncGenerator[StreamEvent, None]:
         response = await client.chat.completions.create(**kwargs)
-        print(response)
+
+        finish_reason = None
+        usage: TokenUsage | None = None
+
+        async for chunk in response:
+            if hasattr(chunk, "usage") and chunk.usage:
+                usage = TokenUsage(
+                    prompt_tokens=chunk.usage.prompt_tokens,
+                    completion_tokens=chunk.usage.completion_tokens,
+                    total_tokens=chunk.usage.total_tokens,
+                    cached_tokens=chunk.usage.prompt_tokens_details.cached_tokens,
+                )
+
+            if not chunk.choices:
+                continue
+
+            choice = chunk.choices[0]
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason
+            if choice.delta.content:
+
+                yield StreamEvent(
+                    type=EventType.MESSAGE_COMPLETE,
+                    text_delta=TextDelta(choice.delta.content),
+                )
+
+        yield StreamEvent(
+            type=EventType.MESSAGE_COMPLETE,
+            usage=usage,
+            finish_reason=finish_reason,
+        )
 
     async def _non_stream_response(
         self,
@@ -65,18 +133,18 @@ class LLMClient:
         text_delta = None
         if message.content:
             text_delta = TextDelta(content=message.content)
-        
+
         usage = None
         if response.usage:
-            usage=TokenUsage(
+            usage = TokenUsage(
                 prompt_tokens=response.usage.prompt_tokens,
                 completion_tokens=response.usage.completion_tokens,
                 total_tokens=response.usage.total_tokens,
                 cached_tokens=response.usage.prompt_tokens_details.cached_tokens,
-            )   
+            )
 
         return StreamEvent(
-            type= EventType.MESSAGE_COMPLETE,
+            type=EventType.MESSAGE_COMPLETE,
             text_delta=text_delta,
             usage=usage,
         )
