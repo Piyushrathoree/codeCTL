@@ -36,11 +36,11 @@ class LLMClient:
         messages: list[dict[str, Any]],
         stream: bool = False,
     ) -> AsyncGenerator[StreamEvent, None]:
-        
-        # created client and kwargs 
+
+        # created client and kwargs
         client = self.get_client()
         kwargs: dict[str, Any] = {
-            "model": "inclusionai/ling-3.0-flash:free",
+            "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
             "messages": messages,
             "stream": stream,
         }
