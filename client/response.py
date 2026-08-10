@@ -1,20 +1,29 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 
-@dataclass 
+@dataclass
 class TextDelta:
     content: str
+
     def _str_(self):
         return self.content
 
 
+@dataclass
+class ToolCall:
+    call_id: str
+    name: str
+    arguments: str
 
-class StreamEventType(str,Enum):
+
+class StreamEventType(str, Enum):
     TEXT_DELTA = "text_delta"
     MESSAGE_COMPLETE = "message_complete"
     ERROR = "error"
+    TOOL_CALL_COMPLETE = "tool_call_complete"
 
 
 @dataclass
@@ -23,7 +32,7 @@ class TokenUsage:
     completion_tokens: int
     total_tokens: int
     cached_tokens: int
-    
+
     def __add__(self, other: "TokenUsage") -> "TokenUsage":
         return TokenUsage(
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
@@ -32,6 +41,7 @@ class TokenUsage:
             cached_tokens=self.cached_tokens + other.cached_tokens,
         )
 
+
 @dataclass
 class StreamEvent:
     type: StreamEventType
@@ -39,6 +49,8 @@ class StreamEvent:
     error: str | None = None
     finish_reason: str | None = None
     usage: TokenUsage | None = None
+    tool_calls: list[ToolCall] | None = None
+
 
 @dataclass
 class Usage:

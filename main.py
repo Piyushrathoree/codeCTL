@@ -21,6 +21,29 @@ class CLI:
             self.agent = agent
             return await self._process_message(message)
 
+    async def run_interactive(self) -> None:
+        console.print(
+            "[dim] Interactive mode enabled. Press Ctrl+C to exit or /exit to exit.[/dim]"
+        )
+        async with Agent() as agent:
+            self.agent = agent
+            while True:
+                try:
+                    message = console.input("\n[user]You> [/user] ").strip()
+                except KeyboardInterrupt:
+                    console.print("\n[dim]Use /exit to quit.[/dim]")
+                    continue
+                except EOFError:
+                    break
+                command = message.lower().strip()
+                if command in {"/exit", "quit", "q"}:
+                    break
+                elif command.startswith("/clear"):
+                    self.agent.context_manager.clear()
+                    console.print("[green]Context cleared.[/green]")
+                    continue
+                await self._process_message(message)
+
     async def _process_message(self, message: str) -> str | None:
         if not self.agent:
             return None
@@ -58,5 +81,8 @@ def main(
             return result
         else:
             sys.exit(1)
+
+    asyncio.run(cli.run_interactive())
+
 
 main()

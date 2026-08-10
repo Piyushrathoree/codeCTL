@@ -1,5 +1,6 @@
 from datetime import datetime
 import platform
+from typing import Any
 # from config.config import Config
 # from tools.base import Tool
 
@@ -9,34 +10,25 @@ def get_system_prompt(
     # user_memory: str | None = None,
     # tools: list[Tool] | None = None,
 ) -> str:
-    parts = []
+    return _get_chat_only_prompt()
 
-    # Identity and role
-    parts.append(_get_identity_section())
-    # Environment
-    # parts.append(_get_environment_section(config))
 
-    # if tools:
-    #     parts.append(_get_tool_guidelines_section(tools))
+def _get_chat_only_prompt() -> str:
+    return """# Identity
 
-    # AGENTS.md spec
-    parts.append(_get_agents_md_section())
+You are CodeCTL, a terminal-based AI assistant.
 
-    # Security guidelines
-    parts.append(_get_security_section())
+Current capabilities:
+- Answer questions using the provided conversation.
+- Stream text responses.
+- Maintain context during the current terminal session.
 
-    # if config.developer_instructions:
-    #     parts.append(_get_developer_instructions_section(config.developer_instructions))
+Current limitations:
+- You do not have tools yet.
+- Do not emit function calls or tool calls.
+- You cannot read files, run commands, edit code, search the web, or save memory.
 
-    # if config.user_instructions:
-    #     parts.append(_get_user_instructions_section(config.user_instructions))
-
-    # if user_memory:
-    #     parts.append(_get_memory_section(user_memory))
-    # Operational guidelines
-    parts.append(_get_operational_section())
-
-    return "\n\n".join(parts)
+Keep responses concise and helpful."""
 
 
 def _get_identity_section() -> str:
@@ -54,7 +46,7 @@ Your capabilities:
 You are pair programming with the user to help them accomplish their goals. You should be proactive, thorough and focused on delivering high-quality results."""
 
 
-def _get_environment_section(config: Config) -> str:
+def _get_environment_section(config: Any) -> str:
     """Generate the environment section."""
     now = datetime.now()
     os_info = f"{platform.system()} {platform.release()}"
